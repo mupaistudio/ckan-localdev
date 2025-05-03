@@ -1,0 +1,108 @@
+version: "3.9"
+
+services:
+  ckan:
+    image: ghcr.io/mupaistudio/ckan:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      solr:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ckan_storage:/var/lib/ckan
+      - pip_cache:/root/.cache/pip
+      - site_packages:/usr/lib/python3.10/site-packages
+      - resource_cache:/var/www/resource_cache
+    networks:
+      - ckannet
+      - dbnet
+      - solrnet
+      - redisnet
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:5000"]
+
+  datapusher:
+    image: ghcr.io/mupaistudio/datapusher:latest
+    restart: unless-stopped
+    networks:
+      - ckannet
+      - dbnet
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:8800"]
+
+  db:
+    image: ghcr.io/mupaistudio/db:latest
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+      - POSTGRES_DB
+      - CKAN_DB_USER
+      - CKAN_DB_PASSWORD
+      - CKAN_DB
+      - DATASTORE_READONLY_USER
+      - DATASTORE_READONLY_PASSWORD
+      - DATASTORE_DB
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - dbnet
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
+
+  solr:
+    image: ghcr.io/mupaistudio/solr:latest
+    restart: unless-stopped
+    volumes:
+      - solr_data:/var/solr
+    networks:
+      - solrnet
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:8983/solr/"]
+
+  redis:
+    image: redis:${REDIS_VERSION}
+    restart: unless-stopped
+    networks:
+      - redisnet
+    healthcheck:
+      test: ["CMD", "redis-cli", "-e", "QUIT"]
+
+  nginx:
+    image: ghcr.io/mupaistudio/nginx:latest
+    restart: unless-stopped
+    depends_on:
+      ckan:
+        condition: service_healthy
+    ports:
+      - "0.0.0.0:${NGINX_PORT_HOST}:${NGINX_PORT}"
+      - "0.0.0.0:${NGINX_SSLPORT_HOST}:${NGINX_SSLPORT}"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - resource_cache:/var/www/resource_cache
+    networks:
+      - webnet
+      - ckannet
+
+volumes:
+  ckan_storage:
+  pg_data:
+  solr_data:
+  pip_cache:
+  site_packages:
+  resource_cache:
+
+networks:
+  webnet:
+  ckannet:
+  dbnet:
+    internal: true
+  solrnet:
+    internal: true
+  redisnet:
+    internal: true
