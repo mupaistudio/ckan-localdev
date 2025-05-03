@@ -18,6 +18,7 @@ services:
       - pip_cache:/root/.cache/pip
       - site_packages:/usr/lib/python3.10/site-packages
       - resource_cache:/var/www/resource_cache
+      - ../ckan-src:/srv/app
     networks:
       - ckannet
       - dbnet
